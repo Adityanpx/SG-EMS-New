@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 
 export interface Notification {
@@ -16,7 +16,8 @@ export interface Notification {
 export function useNotifications(userId?: string) {
   const [notifications, setNotifications] = useState<Notification[]>([])
   const [loading, setLoading] = useState(true)
-  const supabase = createClient()
+  const supabaseRef = useRef(createClient())
+  const supabase = supabaseRef.current
 
   useEffect(() => {
     if (!userId) {
@@ -44,7 +45,7 @@ export function useNotifications(userId?: string) {
     fetchNotifications()
 
     const channel = supabase
-      .channel('notifications')
+      .channel(`notifications-${userId}`)
       .on(
         'postgres_changes',
         {
@@ -62,7 +63,7 @@ export function useNotifications(userId?: string) {
     return () => {
       supabase.removeChannel(channel)
     }
-  }, [userId, supabase])
+  }, [userId])
 
   const markAsRead = async (notificationId: string) => {
     const { error } = await supabase

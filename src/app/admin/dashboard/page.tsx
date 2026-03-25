@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { motion } from 'framer-motion'
 import {
   Users, Clock, FileText, CheckCircle,
@@ -20,7 +20,6 @@ import { formatDate, getInitials } from '@/lib/utils'
 import Link from 'next/link'
 import toast from 'react-hot-toast'
 
-// Fake attendance trend data — visual only, matches Figma bar chart
 const TREND_DATA = [
   { day: 'MON', present: 210, absent: 30 },
   { day: 'TUE', present: 195, absent: 45 },
@@ -31,7 +30,6 @@ const TREND_DATA = [
   { day: 'SUN', present: 40,  absent: 5  },
 ]
 
-// Fake activity line data (sparkline in Recent Activity)
 const ACTIVITY_LINE = [30, 45, 38, 60, 55, 72, 68]
 
 export default function AdminDashboard() {
@@ -43,12 +41,36 @@ export default function AdminDashboard() {
   const [absentToday, setAbsentToday]       = useState<Profile[]>([])
   const [loading, setLoading]               = useState(true)
   const [todayAttendance, setTodayAttendance] = useState<(AttendanceRecord & { profile: Profile | null })[]>([])
+  const supabaseRef = useRef(createClient())
+  const supabase = supabaseRef.current
 
-  useEffect(() => { if (profile) loadDashboard() }, [profile])
+  useEffect(() => {
+    if (!profile) return
+
+    loadDashboard()
+
+    // refresh every 30 seconds
+    const interval = setInterval(loadDashboard, 30000)
+
+    // realtime: when a new leave request comes in, refresh immediately
+    const channel = supabase
+      .channel('dashboard-realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'leave_requests' }, () => {
+        loadDashboard()
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'attendance_records' }, () => {
+        loadDashboard()
+      })
+      .subscribe()
+
+    return () => {
+      clearInterval(interval)
+      supabase.removeChannel(channel)
+    }
+  }, [profile])
 
   async function loadDashboard() {
-    const supabase = createClient()
-    const today    = new Date().toISOString().split('T')[0]
+    const today = new Date().toISOString().split('T')[0]
 
     const { count: empCount }     = await supabase.from('profiles').select('*', { count: 'exact', head: true }).eq('role', 'employee')
     const { count: presentCount } = await supabase.from('attendance_records').select('*', { count: 'exact', head: true }).eq('date', today)
@@ -73,8 +95,7 @@ export default function AdminDashboard() {
     const { data: todayAtt } = await supabase.from('attendance_records').select('user_id').eq('date', today)
     const presentIds = new Set((todayAtt || []).map((a: { user_id: string }) => a.user_id))
     setAbsentToday((allEmp || []).filter((e: Profile) => !presentIds.has(e.user_id)))
-    
-    // Fetch today's attendance with profiles
+
     const { data: attData } = await supabase.from('attendance_records').select('*').eq('date', today).order('clock_in_time', { ascending: true })
     const attUserIds = attData?.map(a => a.user_id) || []
     let attProfilesMap: Record<string, Profile> = {}
@@ -83,12 +104,11 @@ export default function AdminDashboard() {
       attPData?.forEach((p: Profile) => { attProfilesMap[p.user_id] = p })
     }
     setTodayAttendance((attData || []).map(r => ({ ...r, profile: attProfilesMap[r.user_id] || null })))
-    
+
     setLoading(false)
   }
 
   async function quickAction(reqId: string, status: 'approved' | 'rejected') {
-    const supabase = createClient()
     await supabase.from('leave_requests').update({ status }).eq('id', reqId)
     const req = recentRequests.find(r => r.id === reqId)
     if (req) {
@@ -119,7 +139,6 @@ export default function AdminDashboard() {
   return (
     <div className="space-y-5">
 
-      {/* ── Page heading ──────────────────────────────── */}
       <div>
         <h1 className="text-3xl font-light text-slate-800 tracking-tight">Workspace Pulse</h1>
         <p className="text-sm text-slate-500 mt-1">
@@ -128,7 +147,6 @@ export default function AdminDashboard() {
         </p>
       </div>
 
-      {/* ── 4 Stat cards ──────────────────────────────── */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {[
           {
@@ -173,10 +191,7 @@ export default function AdminDashboard() {
         ))}
       </div>
 
-      {/* ── Attendance Trends + Recent Activity ───────── */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-
-        {/* Attendance Trends — bar chart */}
         <motion.div
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
@@ -205,7 +220,6 @@ export default function AdminDashboard() {
           </ResponsiveContainer>
         </motion.div>
 
-        {/* Recent Activity */}
         <motion.div
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
@@ -242,7 +256,6 @@ export default function AdminDashboard() {
         </motion.div>
       </div>
 
-      {/* ── Today's Attendance ────────────────────────────── */}
       <motion.div
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
@@ -315,10 +328,7 @@ export default function AdminDashboard() {
         )}
       </motion.div>
 
-      {/* ── Pending Requests list + System Health ─────── */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-
-        {/* Pending Requests */}
         <motion.div
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
@@ -360,7 +370,6 @@ export default function AdminDashboard() {
           )}
         </motion.div>
 
-        {/* System Health */}
         <motion.div
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
