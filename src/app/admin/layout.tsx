@@ -34,7 +34,6 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     if (!loading && !isAdmin) router.replace('/employee/dashboard')
   }, [loading, isAdmin, router])
 
-  if (loading) return <Loader />
   if (!profile || !isAdmin) return null
 
   return (
