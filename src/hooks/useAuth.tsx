@@ -44,15 +44,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         console.log('[AUTH] Getting session...')
         const { data: { session }, error: sessionError } = await supabase.auth.getSession()
 
+        console.log('[AUTH] getSession completed, error:', sessionError, 'session:', session ? 'found' : 'null')
+
         if (sessionError) {
           console.error('[AUTH] getSession error:', sessionError)
           setLoading(false)
           return
         }
 
-        console.log('[AUTH] Session result:', session ? 'session found' : 'no session')
-
         const currentUser = session?.user ?? null
+        console.log('[AUTH] Setting user, id:', currentUser?.id)
         setUser(currentUser)
 
         if (currentUser) {
@@ -78,6 +79,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     }
 
+    console.log('[AUTH] Calling init()')
     init()
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
