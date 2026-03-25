@@ -1,10 +1,10 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { motion } from 'framer-motion'
-import { SlidersHorizontal, Download, MoreHorizontal, Info, CheckCircle } from 'lucide-react'
-import { createClient } from '@/lib/supabase/client'
+import { SlidersHorizontal, Download, MoreHorizontal, CheckCircle, Clock, XCircle, PauseCircle } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
+import { useLeaveRequests } from '@/hooks/useLeaveRequests'
 import { Loader } from '@/components/ui/Loader'
 import { LeaveRequest, RequestType, RequestStatus } from '@/types'
 import { formatDate } from '@/lib/utils'
@@ -32,42 +32,47 @@ const STATUS_DOT: Record<RequestStatus, string> = {
   approved: 'bg-emerald-400', pending: 'bg-amber-400',
   rejected: 'bg-red-400',     on_hold: 'bg-blue-400',
 }
+const STATUS_ICONS: Record<RequestStatus, any> = {
+  approved: CheckCircle,
+  pending: Clock,
+  rejected: XCircle,
+  on_hold: PauseCircle,
+}
 
 export default function RequestsPage() {
   const { profile, loading: authLoading } = useAuth()
-  const [requests, setRequests]   = useState<LeaveRequest[]>([])
-  const [loading, setLoading]     = useState(true)
+  const { requests, loading, submitRequest } = useLeaveRequests(profile?.user_id, false)
   const [submitting, setSubmitting] = useState(false)
   const [form, setForm] = useState({
     type: 'leave' as RequestType, from_date: '', to_date: '', reason: '',
   })
   const up = (k: string, v: string) => setForm(f => ({ ...f, [k]: v }))
 
-  useEffect(() => { if (profile) loadRequests() }, [profile])
-
-  async function loadRequests() {
-    setLoading(true)
-    const supabase = createClient()
-    const { data } = await supabase.from('leave_requests').select('*').eq('user_id', profile!.user_id).order('created_at', { ascending: false })
-    setRequests(data || [])
-    setLoading(false)
-  }
-
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (new Date(form.to_date) < new Date(form.from_date)) { toast.error('End date cannot be before start date'); return }
     setSubmitting(true)
-    const supabase = createClient()
-    const { error } = await supabase.from('leave_requests').insert({
-      user_id: profile!.user_id, type: form.type,
-      from_date: form.from_date, to_date: form.to_date, reason: form.reason, status: 'pending',
-    })
-    if (error) { toast.error(error.message); setSubmitting(false); return }
-    toast.success('Request submitted!')
-    setForm({ type: 'leave', from_date: '', to_date: '', reason: '' })
-    setSubmitting(false)
-    loadRequests()
+    try {
+      await submitRequest({
+        user_id: profile!.user_id,
+        type: form.type,
+        from_date: form.from_date,
+        to_date: form.to_date,
+        reason: form.reason,
+      })
+      toast.success('Request submitted!')
+      setForm({ type: 'leave', from_date: '', to_date: '', reason: '' })
+    } catch (error) {
+      toast.error('Failed to submit request')
+    } finally {
+      setSubmitting(false)
+    }
   }
+
+  // Calculate request stats
+  const pendingCount = requests.filter(r => r.status === 'pending').length
+  const approvedCount = requests.filter(r => r.status === 'approved').length
+  const rejectedCount = requests.filter(r => r.status === 'rejected').length
 
   if (authLoading) return <Loader />
 
@@ -76,6 +81,43 @@ export default function RequestsPage() {
       <div>
         <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Requests & Absence</h1>
         <p className="text-sm text-slate-500 mt-0.5">Submit and manage your leave applications or remote work requests.</p>
+      </div>
+
+      {/* Stats Cards */}
+      <div className="grid grid-cols-3 gap-4">
+        <div className="bg-white border border-slate-100 rounded-xl p-4 shadow-card">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center">
+              <Clock className="w-5 h-5 text-amber-600" />
+            </div>
+            <div>
+              <p className="text-2xl font-bold text-slate-800">{pendingCount}</p>
+              <p className="text-xs text-slate-400">Pending</p>
+            </div>
+          </div>
+        </div>
+        <div className="bg-white border border-slate-100 rounded-xl p-4 shadow-card">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-emerald-100 flex items-center justify-center">
+              <CheckCircle className="w-5 h-5 text-emerald-600" />
+            </div>
+            <div>
+              <p className="text-2xl font-bold text-slate-800">{approvedCount}</p>
+              <p className="text-xs text-slate-400">Approved</p>
+            </div>
+          </div>
+        </div>
+        <div className="bg-white border border-slate-100 rounded-xl p-4 shadow-card">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-red-100 flex items-center justify-center">
+              <XCircle className="w-5 h-5 text-red-600" />
+            </div>
+            <div>
+              <p className="text-2xl font-bold text-slate-800">{rejectedCount}</p>
+              <p className="text-xs text-slate-400">Rejected</p>
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* Two-column top */}
@@ -187,8 +229,12 @@ export default function RequestsPage() {
                 {requests.map(req => {
                   const days = req.from_date === req.to_date ? 1 :
                     Math.ceil((new Date(req.to_date).getTime() - new Date(req.from_date).getTime()) / (1000 * 60 * 60 * 24)) + 1
+                  const StatusIcon = STATUS_ICONS[req.status]
                   return (
-                    <tr key={req.id} className="border-b border-slate-50 last:border-0 hover:bg-slate-50/50 transition-colors">
+                    <tr 
+                      key={req.id} 
+                      className="border-b border-slate-50 last:border-0 hover:bg-slate-50/50 transition-colors"
+                    >
                       <td className="px-5 py-4">
                         <div className="flex items-center gap-2.5">
                           <div className="w-8 h-8 rounded-xl bg-slate-100 flex items-center justify-center text-base">
@@ -203,7 +249,12 @@ export default function RequestsPage() {
                       </td>
                       <td className="px-5 py-4 max-w-[200px]">
                         <p className="text-sm text-slate-600 truncate">{req.reason}</p>
-                        {req.admin_note && <p className="text-xs text-amber-600 mt-0.5">Note: {req.admin_note}</p>}
+                        {req.admin_note && (
+                          <div className="flex items-start gap-1 mt-1">
+                            <StatusIcon className={`w-3 h-3 mt-0.5 ${req.status === 'approved' ? 'text-emerald-500' : req.status === 'rejected' ? 'text-red-500' : 'text-amber-500'}`} />
+                            <p className="text-xs text-slate-500">Admin note: {req.admin_note}</p>
+                          </div>
+                        )}
                       </td>
                       <td className="px-5 py-4">
                         <div className="flex items-center gap-1.5">
@@ -212,6 +263,11 @@ export default function RequestsPage() {
                             {req.status.replace('_', ' ')}
                           </span>
                         </div>
+                        {req.status !== 'pending' && (
+                          <p className="text-[10px] text-slate-400 mt-1">
+                            {req.status === 'approved' ? 'Approved' : req.status === 'rejected' ? 'Rejected' : 'Updated'}
+                          </p>
+                        )}
                       </td>
                       <td className="px-5 py-4">
                         <button className="p-1.5 rounded-lg text-slate-300 hover:text-slate-500 hover:bg-slate-100 transition-all">

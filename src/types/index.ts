@@ -23,7 +23,7 @@ export interface Task {
   id: string
   title: string
   description: string
-  status: 'todo' | 'in_progress' | 'review' | 'done'
+  status: 'assigned' | 'todo' | 'in_progress' | 'review' | 'done'
   priority: 'low' | 'medium' | 'high'
   assignee_id: string
   assignee?: User
@@ -135,4 +135,4 @@ export interface AttendanceRecord {
 export type RequestType = 'leave' | 'work_from_home' | 'early_leave' | 'comp_off' | 'other'
 export type RequestStatus = 'pending' | 'approved' | 'rejected' | 'on_hold'
 export type TaskPriority = 'low' | 'medium' | 'high'
-export type TaskStatus = 'todo' | 'in_progress' | 'review' | 'done'
+export type TaskStatus = 'assigned' | 'todo' | 'in_progress' | 'review' | 'done'
