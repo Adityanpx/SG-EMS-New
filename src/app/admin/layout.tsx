@@ -34,7 +34,10 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     if (!loading && !isAdmin) router.replace('/employee/dashboard')
   }, [loading, isAdmin, router])
 
-  if (!profile || !isAdmin) return null
+  if (!profile || !isAdmin) {
+    console.log('[ADMIN LAYOUT] Rendering null — profile:', profile, 'isAdmin:', isAdmin, 'loading:', loading)
+    return null
+  }
 
   return (
     <div className="flex h-screen bg-slate-100 overflow-hidden">

@@ -32,8 +32,14 @@ export default function EmployeeLayout({ children }: { children: React.ReactNode
     if (!loading && isAdmin) router.replace('/admin/dashboard')
   }, [loading, isAdmin, router])
 
-  if (loading) return <Loader />
-  if (!profile) return null
+  if (loading) {
+    console.log('[EMPLOYEE LAYOUT] Loading — loading:', loading, 'profile:', profile, 'isAdmin:', isAdmin)
+    return <Loader />
+  }
+  if (!profile) {
+    console.log('[EMPLOYEE LAYOUT] Rendering null — profile:', profile, 'isAdmin:', isAdmin)
+    return null
+  }
 
   return (
     <div className="flex h-screen bg-slate-100 overflow-hidden">

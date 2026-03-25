@@ -35,40 +35,71 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const supabase = supabaseRef.current
 
   useEffect(() => {
-    // Manually get the session first — this resolves immediately
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
-      const currentUser = session?.user ?? null
-      setUser(currentUser)
+    console.log('[AUTH] AuthProvider mounted')
+    console.log('[AUTH] Supabase URL:', process.env.NEXT_PUBLIC_SUPABASE_URL)
+    console.log('[AUTH] Anon key present:', !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY)
 
-      if (currentUser) {
-        const { data } = await supabase
-          .from('profiles')
-          .select('*')
-          .eq('user_id', currentUser.id)
-          .single()
-        setProfile(data)
+    const init = async () => {
+      try {
+        console.log('[AUTH] Getting session...')
+        const { data: { session }, error: sessionError } = await supabase.auth.getSession()
+
+        if (sessionError) {
+          console.error('[AUTH] getSession error:', sessionError)
+          setLoading(false)
+          return
+        }
+
+        console.log('[AUTH] Session result:', session ? 'session found' : 'no session')
+
+        const currentUser = session?.user ?? null
+        setUser(currentUser)
+
+        if (currentUser) {
+          console.log('[AUTH] User found, fetching profile for:', currentUser.id)
+          const { data: profileData, error: profileError } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('user_id', currentUser.id)
+            .single()
+
+          if (profileError) {
+            console.error('[AUTH] Profile fetch error:', profileError)
+          } else {
+            console.log('[AUTH] Profile fetched:', profileData?.role)
+            setProfile(profileData)
+          }
+        }
+      } catch (err) {
+        console.error('[AUTH] Unexpected error in init:', err)
+      } finally {
+        console.log('[AUTH] Init complete, setting loading false')
+        setLoading(false)
       }
+    }
 
-      setLoading(false)
-    })
+    init()
 
-    // Also listen for future auth changes (login, logout, token refresh)
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      console.log('[AUTH] Auth state changed, event:', _event)
       const newUser = session?.user ?? null
       setUser(newUser)
 
       if (newUser) {
-        const { data } = await supabase
+        const { data: profileData, error: profileError } = await supabase
           .from('profiles')
           .select('*')
           .eq('user_id', newUser.id)
           .single()
-        setProfile(data)
+
+        if (profileError) {
+          console.error('[AUTH] Profile fetch error on state change:', profileError)
+        } else {
+          setProfile(profileData)
+        }
       } else {
         setProfile(null)
       }
-
-      setLoading(false)
     })
 
     return () => subscription.unsubscribe()
